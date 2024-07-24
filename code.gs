@@ -4,7 +4,7 @@ function updateSheet() {
   sheet.getRange("C1").setValue("Updated");
 }
 
-const apiToken = 'your_api_token';
+const apiToken = 'Bearer r6uzPZstAb0BPrYm8GT4PrP1gk0d8OAV';
 
 function updateSheet2() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
@@ -25,6 +25,8 @@ function updateSheet2() {
   
   // Make the HTTP request to the WHAPI
   var response = UrlFetchApp.fetch(url, options);
+
+  Logger.log(JSON.parse(response.getContentText()));
   
   // Check if the response is successful
   if (response.getResponseCode() == 200) {
@@ -65,7 +67,8 @@ function getFilledRowsCount() {
 
 function updateMessageDetails(row, sentTime, messageStatus, messageID=undefined) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  sheet.getRange(row, 11).setValue(convertTimestampToUTC530(sentTime)); // Assuming column K is the confirmation column
+  const sentTimeString = convertTimestampToUTC530(sentTime);
+  sheet.getRange(row, 11).setValue(sentTimeString ? sentTimeString : ''); // Assuming column K is the confirmation column
   sheet.getRange(row, 12).setValue(messageStatus);
   if (!!messageID) {
     sheet.getRange(row, 13).setValue(messageID);
@@ -111,7 +114,7 @@ function updateReadReceipts() {
   var numRows = sheet.getLastRow();
   var messageStatus = undefined;
 
-  for (var row = 2; row < numRows + 2; row++) { // Assuming row 1 is the header
+  for (var row = 2; row < numRows; row++) { // Assuming row 1 is the header
   try{
     const messageID = sheet.getRange(row, 13).getValue(); // Column L for message ID
     if (!!messageID && messageID !== '') {
@@ -134,10 +137,10 @@ function updateReadReceipts() {
 function sendWhatsAppMessage(mobileNumber, message, rowNumber) {
   try{
     var url = "https://gate.whapi.cloud/messages/text";
-    
+
     var payload = {
       "typing_time": 0,
-      "to": mobileNumber,
+      "to": String(mobileNumber),
       "body": message
     };
     
@@ -164,13 +167,15 @@ function sendWhatsAppMessage(mobileNumber, message, rowNumber) {
         updateMessageDetails(rowNumber, sentTime, "sent", responseData.message.id);
       }
       else {
-        Logger.log("No timestamp found in the response.")
+        Logger.log("No timestamp found in the response.");
       }
     }else{
       Logger.log("No sent_at timestamp found in the response.");
+      updateMessageDetails(rowNumber, '', "failed", '');
     }
   }catch(error){
-    Logger.log("Skipped sending message: Empty mobile number or message.");
+    Logger.log(`Skipped sending message: Empty mobile number or message. : ${error}`);
+    updateMessageDetails(rowNumber, '', "failed", '');
   }
 }
 
@@ -183,11 +188,11 @@ function sendAllMessages() {
     var finalMessage = sheet.getRange(row, 9).getValue(); // Column I for Final Message
     
     // // Send message only if mobile number and final message are not empty
-    // if (mobileNumber && finalMessage) {
-    sendWhatsAppMessage(mobileNumber, finalMessage, row);
-    // }else{
-    //   Logger.log("Skipped sending message: Empty mobile number or message.");
-    // }
+    if (mobileNumber && finalMessage) {
+      sendWhatsAppMessage(mobileNumber, finalMessage, row);
+    }else{
+      Logger.log("Skipped sending message: Empty mobile number or message.");
+    }
   }
 }
 
@@ -211,19 +216,28 @@ function sendYesSwitch() {
 
 function convertTimestampToUTC530(timestamp) {
     // Create a Date object from the timestamp
-    const date = new Date((timestamp * 1000));
+    try {
+      if (!timestamp || timestamp === '') {
+        return undefined
+      }
+      const date = new Date((timestamp * 1000));
 
-    // Get the UTC time in milliseconds
-    const utcTime = date.getTime() + date.getTimezoneOffset() * 60000;
+      // Get the UTC time in milliseconds
+      const utcTime = date.getTime() + date.getTimezoneOffset() * 60000;
 
-    // Offset for UTC+5:30 in milliseconds
-    const offset = 5.5 * 60 * 60 * 1000;
+      // Offset for UTC+5:30 in milliseconds
+      const offset = 5.5 * 60 * 60 * 1000;
 
-    // Create a new Date object with the offset applied
-    const utc530Date = new Date(utcTime + offset);
-    Logger.log(utc530Date);
+      // Create a new Date object with the offset applied
+      const utc530Date = new Date(utcTime + offset);
+      Logger.log(utc530Date);
 
-    return utc530Date.toString();
+      return utc530Date.toString();
+    }
+    catch (err) {
+      Logger.log(`Error converting to timestamp : ${err}`);
+      return undefined;
+    }
 }
 
 
